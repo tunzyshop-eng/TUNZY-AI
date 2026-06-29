@@ -2,111 +2,117 @@ package com.tunzy.app.service
 
 import android.app.*
 import android.content.Intent
-import android.media.AudioFormat
-import android.media.AudioRecord
-import android.media.MediaRecorder
+import android.os.Bundle
 import android.os.IBinder
-import android.util.Log
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import androidx.core.app.NotificationCompat
 import com.tunzy.app.MainActivity
-import kotlinx.coroutines.*
-import org.vosk.Model
-import org.vosk.Recognizer
-import org.vosk.android.StorageService
 
 class WakeWordService : Service() {
 
     companion object {
-        private const val TAG = "WakeWordService"
         private const val CHANNEL_ID = "tunzy_wake_channel"
         private const val NOTIFICATION_ID = 1
-        private const val SAMPLE_RATE = 16000
         private const val WAKE_PHRASE = "hey tunzy"
     }
 
-    private var model: Model? = null
-    private var recognizer: Recognizer? = null
-    private var audioRecord: AudioRecord? = null
-    private var isListening = false
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var isRunning = false
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
-        initVosk()
+        startListeningLoop()
     }
 
-    private fun initVosk() {
-        StorageService.unpack(this, "vosk-model-small-en-us-0.15", "model",
-            { unpackedModel ->
-                model = unpackedModel
-                recognizer = Recognizer(model, SAMPLE_RATE.toFloat())
-                startWakeWordLoop()
-            },
-            { exception ->
-                Log.e(TAG, "Vosk model load failed: ${exception.message}")
-            }
-        )
+    private fun startListeningLoop() {
+        isRunning = true
+        listenOnce()
     }
 
-    private fun startWakeWordLoop() {
-        val bufferSize = AudioRecord.getMinBufferSize(
-            SAMPLE_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT
-        )
+    private fun listenOnce() {
+        if (!isRunning) return
 
-        audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
-            SAMPLE_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-            bufferSize
-        )
+        speechRecognizer?.destroy()
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
 
-        isListening = true
-        audioRecord?.startRecording()
+        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+            override fun onResults(results: Bundle?) {
+                val matches = results
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?: emptyList()
 
-        serviceScope.launch {
-            val buffer = ShortArray(bufferSize)
-            while (isListening) {
-                val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
-                if (read > 0) {
-                    val bytes = ByteArray(read * 2)
-                    for (i in 0 until read) {
-                        bytes[i * 2] = (buffer[i].toInt() and 0xFF).toByte()
-                        bytes[i * 2 + 1] = (buffer[i].toInt() shr 8 and 0xFF).toByte()
-                    }
-                    if (recognizer?.acceptWaveForm(bytes, bytes.size) == true) {
-                        val result = recognizer?.result ?: ""
-                        if (result.contains(WAKE_PHRASE, ignoreCase = true)) {
-                            onWakeWordDetected()
-                        }
-                    }
+                val heard = matches.any {
+                    it.contains(WAKE_PHRASE, ignoreCase = true)
+                }
+
+                if (heard) {
+                    onWakeWordDetected()
+                } else {
+                    // Keep looping — listen again
+                    listenOnce()
                 }
             }
+
+            override fun onError(error: Int) {
+                // Restart on any error to keep looping
+                if (isRunning) listenOnce()
+            }
+
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+            )
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
         }
+
+        speechRecognizer?.startListening(intent)
     }
 
     private fun onWakeWordDetected() {
         TunzyStateHolder.setState(TunzyState.WAKE)
+
+        // Bring app to front
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         startActivity(intent)
-        val geminiIntent = Intent(this, GeminiVoiceService::class.java)
-        startService(geminiIntent)
+
+        // Start Gemini conversation
+        startService(Intent(this, GeminiVoiceService::class.java))
+
+        // Wait a moment then resume wake word loop
+        android.os.Handler(mainLooper).postDelayed({
+            if (isRunning) listenOnce()
+        }, 5000)
     }
 
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
-            CHANNEL_ID, "TUNZY Wake Word", NotificationManager.IMPORTANCE_LOW
+            CHANNEL_ID,
+            "TUNZY Wake Word",
+            NotificationManager.IMPORTANCE_LOW
         ).apply {
             description = "Listening for Hey Tunzy"
             setShowBadge(false)
         }
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        getSystemService(NotificationManager::class.java)
+            .createNotificationChannel(channel)
     }
 
     private fun buildNotification(): Notification {
@@ -126,12 +132,8 @@ class WakeWordService : Service() {
     }
 
     override fun onDestroy() {
-        isListening = false
-        audioRecord?.stop()
-        audioRecord?.release()
-        recognizer?.close()
-        model?.close()
-        serviceScope.cancel()
+        isRunning = false
+        speechRecognizer?.destroy()
         super.onDestroy()
     }
 
