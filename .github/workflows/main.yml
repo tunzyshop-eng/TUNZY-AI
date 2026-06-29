@@ -1,0 +1,54 @@
+name: Build Release APK
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build & Upload Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout the repo
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Set up Java
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 3. Set up Android SDK
+      - name: Set up Android SDK
+        uses: actions/setup-android@v3
+
+      # 4. Cache Gradle
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # 5. Make gradlew executable
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      # 6. Build the release APK - FIXED HERE :tunzy:
+      - name: Build Release APK
+        run: ./gradlew :tunzy:assembleRelease --no-daemon
+
+      # 7. Upload APK - FIXED HERE tunzy/
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TUNZY-release-apk
+          path: tunzy/build/outputs/apk/release/*.apk  # <-- was app/
+          retention-days: 30
