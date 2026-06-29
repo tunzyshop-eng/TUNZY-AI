@@ -20,26 +20,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Find and fix gradlew
-        run: |
-          find . -name "gradlew" -type f
-          GRADLEW_PATH=$(find . -name "gradlew" -type f | head -1)
-          echo "Found gradlew at: $GRADLEW_PATH"
-          chmod +x "$GRADLEW_PATH"
-          echo "GRADLEW=$GRADLEW_PATH" >> $GITHUB_ENV
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
 
       - name: Build Release APK
-        run: ${{ env.GRADLEW }} assembleRelease --no-daemon
+        run: gradle assembleRelease --no-daemon
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
