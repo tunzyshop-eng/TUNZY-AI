@@ -1,0 +1,3 @@
+-keep class org.vosk.** { *; }
+-keepclassmembers class org.vosk.** { *; }
+-dontwarn org.vosk.**
