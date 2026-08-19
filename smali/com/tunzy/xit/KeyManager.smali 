@@ -1,0 +1,101 @@
+.class public Lcom/tunzy/xit/KeyManager;
+.super Ljava/lang/Object;
+.source "KeyManager.java"
+
+.method public static verifyKey(Landroid/content/Context;Ljava/lang/String;)Z
+    .registers 8
+    .param p0, "context"
+    .param p1, "key"
+    
+    :try_start_0
+    invoke-static {p0}, Lcom/tunzy/xit/DeviceSpoofer;->getDeviceId(Landroid/content/Context;)Ljava/lang/String;
+    move-result-object v2
+    
+    new-instance v3, Lorg/json/JSONObject;
+    invoke-direct {v3}, Lorg/json/JSONObject;-><init>()V
+    const-string v4, "key"
+    invoke-virtual {v3, v4, p1}, Lorg/json/JSONObject;->put(Ljava/lang/String;Ljava/lang/Object;)Lorg/json/JSONObject;
+    const-string v4, "deviceId"
+    invoke-virtual {v3, v4, v2}, Lorg/json/JSONObject;->put(Ljava/lang/String;Ljava/lang/Object;)Lorg/json/JSONObject;
+    
+    new-instance v0, Ljava/net/URL;
+    const-string v5, "https://tunzyxit.vercel.app/api/verify"
+    invoke-direct {v0, v5}, Ljava/net/URL;-><init>(Ljava/lang/String;)V
+    invoke-virtual {v0}, Ljava/net/URL;->openConnection()Ljava/net/URLConnection;
+    move-result-object v1
+    check-cast v1, Ljava/net/HttpURLConnection;
+    
+    const-string v5, "POST"
+    invoke-virtual {v1, v5}, Ljava/net/HttpURLConnection;->setRequestMethod(Ljava/lang/String;)V
+    const-string v5, "Content-Type"
+    const-string v6, "application/json"
+    invoke-virtual {v1, v5, v6}, Ljava/net/HttpURLConnection;->setRequestProperty(Ljava/lang/String;Ljava/lang/String;)V
+    const/4 v5, 0x1
+    invoke-virtual {v1, v5}, Ljava/net/HttpURLConnection;->setDoOutput(Z)V
+    
+    invoke-virtual {v1}, Ljava/net/HttpURLConnection;->getOutputStream()Ljava/io/OutputStream;
+    move-result-object v5
+    invoke-virtual {v3}, Lorg/json/JSONObject;->toString()Ljava/lang/String;
+    move-result-object v6
+    invoke-virtual {v6}, Ljava/lang/String;->getBytes()[B
+    move-result-object v6
+    invoke-virtual {v5, v6}, Ljava/io/OutputStream;->write([B)V
+    invoke-virtual {v5}, Ljava/io/OutputStream;->flush()V
+    invoke-virtual {v5}, Ljava/io/OutputStream;->close()V
+    
+    invoke-virtual {v1}, Ljava/net/HttpURLConnection;->getResponseCode()I
+    move-result v5
+    const/16 v6, 0xc8
+    if-eq v5, v6, :cond_4f
+    invoke-virtual {v1}, Ljava/net/HttpURLConnection;->disconnect()V
+    const/4 v4, 0x0
+    return v4
+    :cond_4f
+    
+    new-instance v5, Ljava/io/BufferedReader;
+    new-instance v6, Ljava/io/InputStreamReader;
+    invoke-virtual {v1}, Ljava/net/HttpURLConnection;->getInputStream()Ljava/io/InputStream;
+    move-result-object v6
+    invoke-direct {v6, v6}, Ljava/io/InputStreamReader;-><init>(Ljava/io/InputStream;)V
+    invoke-direct {v5, v6}, Ljava/io/BufferedReader;-><init>(Ljava/io/Reader;)V
+    new-instance v6, Ljava/lang/StringBuilder;
+    invoke-direct {v6}, Ljava/lang/StringBuilder;-><init>()V
+    :goto_5d
+    invoke-virtual {v5}, Ljava/io/BufferedReader;->readLine()Ljava/lang/String;
+    move-result-object v6
+    if-eqz v6, :cond_67
+    invoke-virtual {v5, v6}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    goto :goto_5d
+    :cond_67
+    invoke-virtual {v5}, Ljava/io/BufferedReader;->close()V
+    invoke-virtual {v1}, Ljava/net/HttpURLConnection;->disconnect()V
+    
+    new-instance v5, Lorg/json/JSONObject;
+    invoke-virtual {v6}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+    move-result-object v6
+    invoke-direct {v5, v6}, Lorg/json/JSONObject;-><init>(Ljava/lang/String;)V
+    const-string v6, "valid"
+    invoke-virtual {v5, v6}, Lorg/json/JSONObject;->getBoolean(Ljava/lang/String;)Z
+    move-result v4
+    :try_end_7a
+    .catch Ljava/lang/Exception; {:try_start_0 .. :try_end_7a} :catch_7b
+    return v4
+    
+    :catch_7b
+    move-exception v5
+    const/4 v4, 0x0
+    return v4
+.end method
+
+.method public static getSavedKey(Landroid/content/Context;)Ljava/lang/String;
+    .registers 4
+    const-string v0, "TunzyXitPrefs"
+    const/4 v1, 0x0
+    invoke-virtual {p0, v0, v1}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+    move-result-object v0
+    const-string v1, "saved_key"
+    const/4 v2, 0x0
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v0
+    return-object v0
+.end method
